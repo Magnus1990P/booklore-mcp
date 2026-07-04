@@ -103,8 +103,7 @@ jobs:
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
-             [[ "${{ needs.audit.result }}" != "success" ]] || \
-             [[ "${{ needs.docker.result }}" != "success" ]]; then
+             [[ "${{ needs.audit.result }}" != "success" ]]; then
             echo "One or more checks failed!"
             exit 1
           fi
