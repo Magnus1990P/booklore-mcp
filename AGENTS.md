@@ -48,7 +48,7 @@ Key internals to know before editing:
 
 ## Running checks
 
-Run the full gate before proposing changes (CI runs the same on 3.10–3.13):
+Run the full gate before proposing changes (CI runs the same on 3.12–3.14):
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest

@@ -18,7 +18,7 @@ cp .env.example .env   # add your BookLore URL + credentials (used for live test
 
 ## Dev loop
 
-Run all four before opening a PR — CI runs the same across Python 3.10–3.13:
+Run all four before opening a PR — CI runs the same across Python 3.12–3.14:
 
 ```bash
 uv run ruff check .         # lint

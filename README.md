@@ -309,7 +309,7 @@ uv run mypy                 # type check (src/booklore_mcp + the server.py shim)
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint, format check, type check, and tests
-across Python 3.10–3.13 on every push and pull request, plus a dependency
+across Python 3.12–3.14 on every push and pull request, plus a dependency
 vulnerability scan (`pip-audit`) and a Docker image build.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow, how to add a tool, and
