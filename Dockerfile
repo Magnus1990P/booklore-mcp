@@ -16,7 +16,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
 # Then the application code, and install the project itself.
-COPY server.py log.py README.md LICENSE ./
+COPY src ./src
+COPY server.py README.md LICENSE ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 

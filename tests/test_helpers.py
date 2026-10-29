@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from server import BookSummary, _summarize_book
+from booklore_mcp.helpers import _summarize_book
+from booklore_mcp.models import BookSummary
 
 
 def test_summarize_trims_and_normalizes_authors():

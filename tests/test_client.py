@@ -9,7 +9,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from server import BookLoreClient, BookLoreError
+from booklore_mcp.client import BookLoreClient, BookLoreError
 
 BASE = "http://booklore.test"
 

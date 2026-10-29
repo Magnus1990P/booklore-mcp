@@ -8,7 +8,9 @@ import httpx
 import pytest
 from fastmcp import Client
 
-import server
+from booklore_mcp import helpers, runtime
+from booklore_mcp.app import mcp
+from booklore_mcp.client import BookLoreClient
 
 BASE = "http://booklore.test"
 
@@ -18,11 +20,11 @@ BASE = "http://booklore.test"
 
 def test_author_names_normalizes_dicts_and_strings():
     meta = {"authors": [{"name": "Ann"}, "Bob", {"name": None}, ""]}
-    assert server._author_names(meta) == ["Ann", "Bob"]
+    assert helpers._author_names(meta) == ["Ann", "Bob"]
 
 
 def test_merge_list_add_remove_case_insensitive_preserves_order():
-    merged = server._merge_list(
+    merged = helpers._merge_list(
         ["Python", "narrative"], add=["python", "trading"], remove=["NARRATIVE"]
     )
     assert merged == ["Python", "trading"]
@@ -30,49 +32,49 @@ def test_merge_list_add_remove_case_insensitive_preserves_order():
 
 def test_matches_filters_tags_any_vs_all():
     book = {"metadata": {"tags": ["blockchain", "bitcoin"]}}
-    assert server._matches_filters(book, {"tags": ["BITCOIN"]})  # any, case-insensitive
-    assert server._matches_filters(book, {"tags": ["bitcoin", "blockchain"], "tags_mode": "all"})
-    assert not server._matches_filters(book, {"tags": ["bitcoin", "ethereum"], "tags_mode": "all"})
+    assert helpers._matches_filters(book, {"tags": ["BITCOIN"]})  # any, case-insensitive
+    assert helpers._matches_filters(book, {"tags": ["bitcoin", "blockchain"], "tags_mode": "all"})
+    assert not helpers._matches_filters(book, {"tags": ["bitcoin", "ethereum"], "tags_mode": "all"})
 
 
 def test_matches_filters_missing_requires_every_listed_field_empty():
     book = {"metadata": {"tags": ["x"], "categories": []}}
-    assert server._matches_filters(book, {"missing": ["categories"]})
-    assert not server._matches_filters(book, {"missing": ["tags"]})
-    assert not server._matches_filters(book, {"missing": ["tags", "categories"]})
+    assert helpers._matches_filters(book, {"missing": ["categories"]})
+    assert not helpers._matches_filters(book, {"missing": ["tags"]})
+    assert not helpers._matches_filters(book, {"missing": ["tags", "categories"]})
 
 
 def test_matches_filters_missing_any_mode_and_identifier_fields():
     book = {"metadata": {"asin": "B01", "goodreadsId": ""}}
     # "all" (default): every field must be empty — asin is present, so excluded.
-    assert not server._matches_filters(book, {"missing": ["asin", "goodreadsId"]})
+    assert not helpers._matches_filters(book, {"missing": ["asin", "goodreadsId"]})
     # "any": at least one empty — goodreadsId is empty, so included.
-    assert server._matches_filters(
+    assert helpers._matches_filters(
         book, {"missing": ["asin", "goodreadsId"], "missing_mode": "any"}
     )
 
 
 def test_normalize_goodreads_id_strips_slug_keeps_numeric():
-    assert server._normalize_goodreads_id("23463279-designing-data-intensive") == "23463279"
-    assert server._normalize_goodreads_id("171712768") == "171712768"
-    assert server._normalize_goodreads_id("  42  ") == "42"
-    assert server._normalize_goodreads_id(None) is None
+    assert helpers._normalize_goodreads_id("23463279-designing-data-intensive") == "23463279"
+    assert helpers._normalize_goodreads_id("171712768") == "171712768"
+    assert helpers._normalize_goodreads_id("  42  ") == "42"
+    assert helpers._normalize_goodreads_id(None) is None
 
 
 def test_matches_filters_shelf_library_status():
     book = {"libraryId": 1, "readStatus": "READ", "shelves": [{"id": 5}], "metadata": {}}
-    assert server._matches_filters(book, {"shelf_ids": [5]})
-    assert not server._matches_filters(book, {"shelf_ids": [9]})
-    assert server._matches_filters(book, {"library_ids": [1]})
-    assert server._matches_filters(book, {"read_status": "READ"})
-    assert not server._matches_filters(book, {"read_status": "UNREAD"})
+    assert helpers._matches_filters(book, {"shelf_ids": [5]})
+    assert not helpers._matches_filters(book, {"shelf_ids": [9]})
+    assert helpers._matches_filters(book, {"library_ids": [1]})
+    assert helpers._matches_filters(book, {"read_status": "READ"})
+    assert not helpers._matches_filters(book, {"read_status": "UNREAD"})
 
 
 def test_matches_query_over_title_and_authors():
     book = {"title": "The Hobbit", "metadata": {"authors": ["J.R.R. Tolkien"]}}
-    assert server._matches_query(book, "tolkien")
-    assert server._matches_query(book, "hobbit")
-    assert not server._matches_query(book, "dune")
+    assert helpers._matches_query(book, "tolkien")
+    assert helpers._matches_query(book, "hobbit")
+    assert not helpers._matches_query(book, "dune")
 
 
 # --- tool flows -------------------------------------------------------------
@@ -83,7 +85,7 @@ def authed(respx_mock):
     respx_mock.post(f"{BASE}/api/v1/auth/login").mock(
         return_value=httpx.Response(200, json={"accessToken": "a", "refreshToken": "r"})
     )
-    server.client = server.BookLoreClient(BASE, "tester", "secret")
+    runtime.client = BookLoreClient(BASE, "tester", "secret")
     return respx_mock
 
 
@@ -95,7 +97,7 @@ _BOOKS = [
 
 async def test_search_books_missing_filter(authed):
     authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=_BOOKS))
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool("search_books", {"filters": {"missing": ["tags"]}})
     assert result.data.total == 1
     assert result.data.books[0].id == 2
@@ -108,7 +110,7 @@ async def test_add_tags_merges_existing_and_puts(authed):
         return_value=httpx.Response(200, json={})
     )
 
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         await c.call_tool("add_tags", {"book_id": 7, "tags": ["new", "keep"]})
 
     body = json.loads(put.calls.last.request.content)
@@ -125,7 +127,7 @@ async def test_bulk_update_reports_partial_success(authed):
     authed.put(f"{BASE}/api/v1/books/1/metadata").mock(return_value=httpx.Response(200, json={}))
     authed.get(f"{BASE}/api/v1/books/999").mock(return_value=httpx.Response(404, text="nope"))
 
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool(
             "bulk_update_metadata",
             {"book_ids": [1, 999], "patch": {"tags": {"add": ["t"]}}},
@@ -143,7 +145,7 @@ async def test_ping_reports_authenticated_with_version_and_libraries(authed):
     authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=_BOOKS))
     authed.get(f"{BASE}/api/v1/libraries").mock(return_value=httpx.Response(200, json=[{"id": 1}]))
 
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool("ping", {})
 
     d = result.data
@@ -157,7 +159,7 @@ async def test_set_field_locks_builds_field_actions(authed):
     route = authed.put(f"{BASE}/api/v1/books/metadata/toggle-field-locks").mock(
         return_value=httpx.Response(200, json=[])
     )
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         await c.call_tool(
             "set_field_locks",
             {"book_ids": [5], "lock": ["tags", "authors"], "unlock": ["description"]},
@@ -181,7 +183,7 @@ async def test_list_authors_uses_authors_endpoint(authed):
             ],
         )
     )
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool("list_authors", {"query": "an"})
 
     d = result.data
@@ -214,7 +216,7 @@ async def test_fetch_metadata_candidates_defaults_query_and_reports_status(authe
     route = authed.post(f"{BASE}/api/v1/books/7/metadata/prospective").mock(
         return_value=httpx.Response(200, headers={"content-type": "text/event-stream"}, text=sse)
     )
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool(
             "fetch_metadata_candidates", {"book_id": 7, "providers": ["Google"]}
         )
@@ -246,7 +248,7 @@ async def test_fetch_metadata_candidates_flags_empty_and_disabled(authed):
     authed.post(f"{BASE}/api/v1/books/9/metadata/prospective").mock(
         return_value=httpx.Response(200, headers={"content-type": "text/event-stream"}, text="")
     )
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool(
             "fetch_metadata_candidates",
             {"book_id": 9, "providers": ["Amazon", "GoodReads"], "title": "x"},
@@ -263,7 +265,7 @@ async def test_export_library_fields_projection_fetches_full(authed):
         {"id": 1, "title": "T", "metadata": {"asin": "B01", "isbn13": "111", "authors": ["Ann"]}}
     ]
     route = authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=books))
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool(
             "export_library", {"format": "json", "fields": ["id", "asin", "authors"]}
         )
@@ -279,7 +281,7 @@ async def test_bulk_set_read_status_groups_by_status(authed):
     route = authed.post(f"{BASE}/api/v1/books/status").mock(
         return_value=httpx.Response(200, json=[])
     )
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool(
             "bulk_set_read_status",
             {
@@ -314,7 +316,7 @@ async def test_find_duplicates_wraps_native_endpoint(authed):
     route = authed.post(f"{BASE}/api/v1/books/duplicates").mock(
         return_value=httpx.Response(200, json=groups)
     )
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool("find_duplicates", {"preset": "balanced"})
 
     d = result.data
@@ -344,7 +346,7 @@ async def test_fetch_metadata_candidates_flags_disabled_provider_fields(authed):
     authed.post(f"{BASE}/api/v1/books/21/metadata/prospective").mock(
         return_value=httpx.Response(200, headers={"content-type": "text/event-stream"}, text=sse)
     )
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool(
             "fetch_metadata_candidates",
             {"book_id": 21, "providers": ["GoodReads"], "title": "DDIA"},
@@ -358,7 +360,7 @@ async def test_fetch_metadata_candidates_flags_disabled_provider_fields(authed):
 async def test_export_library_paginates_and_reports_total(authed):
     books = [{"id": i, "title": f"B{i}", "metadata": {}} for i in range(5)]
     authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=books))
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         result = await c.call_tool(
             "export_library", {"format": "json", "fields": ["id"], "offset": 1, "limit": 2}
         )
@@ -381,7 +383,7 @@ async def test_normalize_goodreads_ids_dry_run_then_apply(authed):
     put = authed.put(f"{BASE}/api/v1/books/21/metadata").mock(
         return_value=httpx.Response(200, json={})
     )
-    async with Client(server.mcp) as c:
+    async with Client(mcp) as c:
         dry = await c.call_tool("normalize_goodreads_ids", {})
         # Only the slug record is flagged; the already-numeric one is left alone.
         assert dry.data["dry_run"] is True

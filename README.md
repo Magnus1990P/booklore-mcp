@@ -129,7 +129,9 @@ uv run server.py
 
 Serves streamable-HTTP MCP at `http://127.0.0.1:8000/mcp`. Override with
 `MCP_HOST`, `MCP_PORT`, `MCP_PATH`. Press Ctrl-C to stop. `uv run booklore-mcp`
-(the installed console script) is equivalent to `uv run server.py`.
+(the installed console script) and `uv run python -m booklore_mcp` are both
+equivalent to `uv run server.py` — the code lives in the `src/booklore_mcp`
+package and `server.py` is a thin launcher kept for backwards compatibility.
 
 > **Security:** this endpoint has no auth of its own and acts with your BookLore
 > credentials, so anyone who can reach the port controls your library. Keep it
@@ -303,7 +305,7 @@ instance is needed.
 uv run pytest               # run the test suite
 uv run ruff check .         # lint
 uv run ruff format .        # format
-uv run mypy                 # type check (server.py, log.py)
+uv run mypy                 # type check (src/booklore_mcp + the server.py shim)
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint, format check, type check, and tests
