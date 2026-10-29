@@ -11,7 +11,7 @@ from typing import Any, Literal
 from .. import runtime
 from ..app import mcp
 from ..client import BookLoreError
-from ..helpers import _all_books, _author_names, _meta, _shelf_names
+from ..helpers import _all_books, _author_names, _book_kind, _meta, _shelf_names
 
 # Flat field extractors for export_library's `fields` projection. Fields beyond the plain
 # list view (asin, goodreadsId, googleId, hardcoverId, subtitle, description) are stripped
@@ -41,6 +41,7 @@ _EXPORT_FIELDS: dict[str, Any] = {
     "categories": lambda b: list(_meta(b).get("categories") or []),
     "description": lambda b: _meta(b).get("description"),
     "shelves": _shelf_names,
+    "kind": _book_kind,
 }
 
 # Export/missing fields BookLore omits from the plain list response (need withDescription).
@@ -82,8 +83,8 @@ async def export_library(
     id, title, subtitle, authors, series, seriesNumber, publisher, publishedDate,
     language, pageCount, isbn10, isbn13, asin, goodreadsId, googleId, hardcoverId,
     amazonRating, goodreadsRating, personalRating, readStatus, tags, categories,
-    description, shelves. Identifier fields (asin/goodreadsId/…) and description are
-    fetched on demand.
+    description, shelves, kind (book/comic/audiobook). Identifier fields
+    (asin/goodreadsId/…) and description are fetched on demand.
 
     A full-library export easily exceeds the response token limit, so: prefer `csv`
     (far more compact than JSON), keep `fields` narrow, and page with `offset`/`limit`

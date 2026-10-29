@@ -395,3 +395,106 @@ async def test_normalize_goodreads_ids_dry_run_then_apply(authed):
     assert applied.data["changed"][0]["book_id"] == 21
     body = json.loads(put.calls.last.request.content)
     assert body["metadata"] == {"goodreadsId": "23463279"}  # only the one field is touched
+
+
+# --- kind / series-number helpers -------------------------------------------
+
+
+def test_book_kind_from_primary_file_type():
+    assert helpers._book_kind({"primaryFile": {"bookType": "CBX"}}) == "comic"
+    assert helpers._book_kind({"primaryFile": {"bookType": "AUDIOBOOK"}}) == "audiobook"
+    assert helpers._book_kind({"primaryFile": {"bookType": "EPUB"}}) == "book"
+    assert helpers._book_kind({}) == "book"  # no file info -> treat as a book
+
+
+def test_series_number_prefers_series_number_then_numeric_issue():
+    assert helpers._series_number({"metadata": {"seriesNumber": 3}}) == 3.0
+    comic = {"metadata": {"comicMetadata": {"issueNumber": " 12 "}}}
+    assert helpers._series_number(comic) == 12.0
+    annual = {"metadata": {"comicMetadata": {"issueNumber": "Annual 1"}}}
+    assert helpers._series_number(annual) is None
+    assert helpers._series_number({"metadata": {}}) is None
+
+
+# --- title / genre search ----------------------------------------------------
+
+_TITLED = [
+    {"id": 1, "title": "The Art of War", "metadata": {"authors": ["Sun Tzu"]}},
+    {"id": 2, "title": "Dune", "metadata": {"subtitle": "A war in the desert", "authors": []}},
+    {"id": 3, "title": "Peace", "metadata": {"authors": ["Warren Smith"]}},
+    {
+        "id": 4,
+        "title": "War Comics",
+        "primaryFile": {"bookType": "CBX"},
+        "metadata": {"authors": []},
+    },
+]
+
+
+async def test_search_titles_matches_title_and_subtitle_not_authors(authed):
+    route = authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=_TITLED))
+    async with Client(mcp) as c:
+        result = await c.call_tool("search_titles", {"query": "war"})
+
+    assert [b.id for b in result.data.books] == [2, 1, 4]  # sorted by title; no author hit
+    # Subtitles are stripped from the plain list response -> full records requested.
+    assert route.calls.last.request.url.params["withDescription"] == "true"
+
+
+async def test_search_titles_title_only_and_kind_filter(authed):
+    authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=_TITLED))
+    async with Client(mcp) as c:
+        titles = await c.call_tool("search_titles", {"query": "war", "in_subtitle": False})
+        comics = await c.call_tool("search_titles", {"query": "war", "kind": "comic"})
+
+    assert [b.id for b in titles.data.books] == [1, 4]
+    assert [b.id for b in comics.data.books] == [4]
+
+
+async def test_search_books_query_fetches_full_records_for_subtitles(authed):
+    route = authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=_TITLED))
+    async with Client(mcp) as c:
+        result = await c.call_tool("search_books", {"query": "desert"})
+
+    assert [b.id for b in result.data.books] == [2]
+    assert route.calls.last.request.url.params["withDescription"] == "true"
+
+
+_GENRED = [
+    {"id": 1, "title": "B", "metadata": {"categories": ["Science Fiction", "Classics"]}},
+    {"id": 2, "title": "A", "metadata": {"categories": ["science fiction"]}},
+    {
+        "id": 3,
+        "title": "C",
+        "primaryFile": {"bookType": "CBX"},
+        "metadata": {"categories": ["Science Fiction", "SCIENCE FICTION"]},
+    },
+    {"id": 4, "title": "D", "metadata": {}},
+]
+
+
+async def test_list_genres_merges_case_and_counts_books(authed):
+    authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=_GENRED))
+    async with Client(mcp) as c:
+        result = await c.call_tool("list_genres", {})
+        filtered = await c.call_tool("list_genres", {"query": "class"})
+
+    assert result.data == {
+        "total": 2,
+        "genres": [
+            {"name": "Classics", "book_count": 1},
+            {"name": "Science Fiction", "book_count": 3},  # duplicate casing counted once
+        ],
+    }
+    assert [g["name"] for g in filtered.data["genres"]] == ["Classics"]
+
+
+async def test_books_by_genre_case_insensitive_with_kind(authed):
+    authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=_GENRED))
+    async with Client(mcp) as c:
+        result = await c.call_tool("books_by_genre", {"genre": "SCIENCE fiction"})
+        comics = await c.call_tool("books_by_genre", {"genre": "science fiction", "kind": "comic"})
+
+    assert result.data.total == 3
+    assert [b.id for b in result.data.books] == [2, 1, 3]  # sorted by title
+    assert [b.id for b in comics.data.books] == [3]

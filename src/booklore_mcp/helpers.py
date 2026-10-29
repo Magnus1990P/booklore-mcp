@@ -8,7 +8,7 @@ duplicate presets) live with their single consuming tool module, not here.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from . import runtime
 from .client import BookLoreError
@@ -118,6 +118,9 @@ def _matches_filters(book: dict, filters: dict) -> bool:
     if (libs := filters.get("library_ids")) and book.get("libraryId") not in set(libs):
         return False
 
+    if (kind := filters.get("kind")) and not _matches_kind(book, kind):
+        return False
+
     # `missing`: filter on empty fields. mode "all" (default) keeps a book only when every
     # listed field is empty; mode "any" keeps it when at least one listed field is empty.
     if missing := filters.get("missing"):
@@ -214,6 +217,43 @@ def _normalize_metadata(meta: dict) -> dict:
 
 def _meta(book: dict) -> dict:
     return book.get("metadata") or {}
+
+
+# primaryFile.bookType -> the coarse kind the discovery tools filter on. CBX covers
+# cbz/cbr/cb7 comic archives; everything else readable (EPUB/PDF/MOBI) is a "book".
+_KIND_BY_FILE_TYPE = {"CBX": "comic", "AUDIOBOOK": "audiobook"}
+BookKind = Literal["all", "book", "comic", "audiobook"]
+
+
+def _book_kind(book: dict) -> str:
+    """'comic', 'audiobook' or 'book', from the primary file's bookType."""
+    file_type = (book.get("primaryFile") or {}).get("bookType")
+    return _KIND_BY_FILE_TYPE.get(str(file_type).upper(), "book")
+
+
+def _matches_kind(book: dict, kind: str) -> bool:
+    return kind == "all" or _book_kind(book) == kind
+
+
+def _series_number(book: dict) -> float | None:
+    """A book's position in its series: metadata.seriesNumber, falling back for comics to
+    comicMetadata.issueNumber when that is numeric ("12", "1.5" — not "Annual 1")."""
+    meta = _meta(book)
+    number = meta.get("seriesNumber")
+    if isinstance(number, (int, float)) and not isinstance(number, bool):
+        return float(number)
+    issue = (meta.get("comicMetadata") or {}).get("issueNumber")
+    if isinstance(issue, str):
+        try:
+            return float(issue.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _categories(book: dict) -> list[str]:
+    """A book's categories (BookLore's genre field), as a list of strings."""
+    return [str(c) for c in (_meta(book).get("categories") or []) if c]
 
 
 def _shelf_names(book: dict) -> list[str]:

@@ -13,6 +13,7 @@ from . import (
     metadata,
     reading,
     search,
+    series,
     shelves,
     stats,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "metadata",
     "reading",
     "search",
+    "series",
     "shelves",
     "stats",
 ]

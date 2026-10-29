@@ -22,6 +22,7 @@ EXPECTED_TOOLS = {
     "assign_shelves",
     "bookdrop_rescan",
     "books_by_author",
+    "books_by_genre",
     "bulk_set_read_status",
     "bulk_update_metadata",
     "create_shelf",
@@ -29,6 +30,7 @@ EXPECTED_TOOLS = {
     "export_library",
     "fetch_metadata_candidates",
     "find_duplicates",
+    "find_series_gaps",
     "get_book",
     "get_reading_stats",
     "get_recommendations",
@@ -36,9 +38,11 @@ EXPECTED_TOOLS = {
     "isbn_lookup",
     "list_authors",
     "list_books",
+    "list_genres",
     "list_libraries",
     "list_shelves",
     "normalize_goodreads_ids",
+    "organize_shelves",
     "ping",
     "refresh_library",
     "remove_categories",
@@ -46,6 +50,7 @@ EXPECTED_TOOLS = {
     "remove_tags",
     "reset_progress",
     "search_books",
+    "search_titles",
     "set_field_locks",
     "set_personal_rating",
     "set_read_status",
@@ -60,6 +65,16 @@ async def test_all_tools_registered():
     async with Client(booklore_mcp.mcp) as c:
         names = {t.name for t in await c.list_tools()}
     assert names == EXPECTED_TOOLS
+
+
+async def test_prompts_registered():
+    """The prompts module is imported by the package and registers its workflows."""
+    async with Client(booklore_mcp.mcp) as c:
+        prompts = {p.name: p for p in await c.list_prompts()}
+        assert set(prompts) == {"organize_library"}
+        rendered = await c.get_prompt("organize_library", {"context": "by mood"})
+    text = rendered.messages[0].content.text
+    assert "by mood" in text and "dry_run=true" in text and "approve" in text
 
 
 def test_entrypoints_are_wired():

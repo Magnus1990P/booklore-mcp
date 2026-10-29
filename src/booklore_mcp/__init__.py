@@ -9,7 +9,7 @@ Importing this package builds the shared `mcp` server and registers every tool (
 
 from __future__ import annotations
 
-from . import tools  # noqa: F401  (import for the tool-registration side-effect)
+from . import prompts, tools  # noqa: F401  (import for the registration side-effect)
 from .app import main, mcp
 
 __all__ = ["main", "mcp"]

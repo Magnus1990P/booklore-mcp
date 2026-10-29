@@ -26,7 +26,8 @@ src/booklore_mcp/        # all application code (src layout)
   helpers.py             # shared helpers (filtering, metadata patch, summaries)
   app.py                 # the FastMCP instance `mcp`, lifespan, main()
   tools/                 # the MCP tools, grouped by theme (one module each)
-    books.py shelves.py reading.py metadata.py search.py stats.py libraries.py
+    books.py shelves.py reading.py metadata.py search.py series.py stats.py libraries.py
+  prompts.py             # @mcp.prompt workflows (e.g. organize_library)
 server.py                # thin backwards-compat launcher (exposes `mcp`, runs main())
 tests/                   # pytest suite (offline, respx-mocked HTTP)
 Dockerfile .dockerignore pyproject.toml uv.lock   # build / packaging
@@ -40,8 +41,13 @@ Key internals to know before editing:
   `from .. import runtime`), **never** `from .runtime import client`. The test suite
   swaps `runtime.client` wholesale to reset auth/cache state between tests, and a
   direct name-import would not see the swap.
-- **Tools register by import side-effect.** `tools/__init__.py` imports every tool
-  module; each decorates functions with `@mcp.tool`. `app.py` must not import `tools`
+- **Tools and prompts register by import side-effect.** `tools/__init__.py` imports every
+  tool module (each decorates functions with `@mcp.tool`), and the package `__init__.py`
+  imports `prompts`. A new tool module must be added to `tools/__init__.py`, and new
+  tools to `EXPECTED_TOOLS` in `tests/test_deployment.py`.
+- **Writes that an LLM plans go through a preview.** Follow the `dry_run=True` default
+  pattern (`normalize_goodreads_ids`, `organize_shelves`): preview, let the user approve,
+  then apply. Keep such writes additive. `app.py` must not import `tools`
   (that would create a cycle) — the package `__init__.py` / `__main__.py` pulls them in.
 - Module layering is one-directional:
   `config,log,models → client → runtime → helpers → app → tools/*`.

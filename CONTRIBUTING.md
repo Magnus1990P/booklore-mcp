@@ -38,9 +38,10 @@ uv run pytest               # tests — fully offline, no live BookLore needed
 | `src/booklore_mcp/models.py` | Pydantic response models (`BookSummary`, `SearchResult`) |
 | `src/booklore_mcp/helpers.py` | Shared helpers (filtering, metadata patching, summaries) |
 | `src/booklore_mcp/app.py` | The `FastMCP` instance `mcp`, lifespan, and `main()` |
-| `src/booklore_mcp/tools/` | The `@mcp.tool` definitions, grouped: `books`, `shelves`, `reading`, `metadata`, `search`, `stats`, `libraries` |
+| `src/booklore_mcp/tools/` | The `@mcp.tool` definitions, grouped: `books`, `shelves`, `reading`, `metadata`, `search`, `series`, `stats`, `libraries` |
+| `src/booklore_mcp/prompts.py` | `@mcp.prompt` workflows (e.g. `organize_library`) |
 | `server.py` | Thin backwards-compat launcher (exposes `mcp`, runs `main()`) |
-| `tests/` | `test_client.py` (HTTP client), `test_tools.py` / `test_search.py` (tools), `test_helpers.py`, `test_logging.py` |
+| `tests/` | `test_client.py` (HTTP client), `test_tools.py` / `test_search.py` / `test_series.py` (tools), `test_deployment.py` (registration + entrypoints), `test_helpers.py`, `test_logging.py` |
 
 ## Adding a tool
 

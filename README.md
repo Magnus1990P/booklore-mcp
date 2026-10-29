@@ -20,6 +20,10 @@ your BookLore login (JWT, auto-refreshed).
 | `get_recommendations` | read | Books similar to a given one |
 | `list_authors` | read | Distinct authors with per-author book counts |
 | `books_by_author` | read | Books by a given author |
+| `search_titles` | read | Search title (and subtitle) text only — ignores authors/ISBNs; filter books vs comics |
+| `list_genres` | read | Distinct genres (BookLore categories) with per-genre book counts |
+| `books_by_genre` | read | Books in a given genre; filter books vs comics |
+| `find_series_gaps` | read | Missing volumes/issues in book and comic series (owned, missing, unnumbered) |
 | `get_reading_stats` | read | Counts by read status + average rating |
 | `export_library` | read | Export the library (or a shelf) as JSON or CSV; `fields` projection or `full=True` for ISBN/ASIN/ratings/IDs |
 | `find_duplicates` | read | Group duplicate books via BookLore's native detection (presets + per-signal control) |
@@ -39,6 +43,7 @@ your BookLore login (JWT, auto-refreshed).
 | `set_personal_rating` | write | Set your rating |
 | `assign_shelves` | write | Set books' shelves (add and/or remove) |
 | `add_to_shelves` / `remove_from_shelves` | write | Additive shelf membership (idempotent) |
+| `organize_shelves` | write | Create shelves and file books/comics into them from a plan — preview (`dry_run`) first, additive only |
 | `create_shelf` | write | Create a shelf |
 | `delete_shelf` | write | Delete a shelf (destructive) |
 | `set_reading_progress` | write | Record reading position / % for a book file |
@@ -64,6 +69,25 @@ without a session cookie) is distinguishable from a genuine no-match. Each candi
 carries only its own provider's fields (Amazon → `asin`/`amazonRating`, GoodReads →
 `goodreadsId`/`goodreadsRating`, Google → `googleId`), so include the provider that owns
 the field you want to fill.
+
+"Kind" is derived from a book's primary file: CBX archives (cbz/cbr/cb7) are **comics**,
+audiobook files are **audiobooks**, everything else is a **book**. `search_titles`,
+`books_by_genre`, `find_series_gaps` and the `search_books` `kind` filter all accept it,
+and `export_library` can project it as a `kind` field. `find_series_gaps` positions each
+book by `seriesNumber` (falling back to a numeric comic `issueNumber`); when BookLore
+knows the series total it also reports missing trailing volumes, otherwise only gaps
+inside the run you own.
+
+### Organising shelves with an LLM
+
+`organize_shelves` takes a plan — `[{"shelf": "...", "book_ids": [...]}]` — and by default
+only **previews** it: which shelves would be created or reused, what would be added, what
+is already there, and any unknown ids, split into books/comics/audiobooks. Nothing is
+written until it is called again with `dry_run: false`, and it only ever *adds* books to
+shelves. The `organize_library` MCP prompt drives the whole loop: give it a context
+("by reading mood", "a shelf per decade", "separate manga from western comics"), and the
+assistant reads the library, drafts the shelves, shows you the preview, and applies it
+only after you approve.
 
 ## Setup
 

@@ -126,6 +126,100 @@ async def test_delete_shelf_returns_confirmation(authed):
     assert "Deleted shelf 3" in result.data
 
 
+_SHELF_BOOKS = [
+    {"id": 1, "title": "Dune", "shelves": [{"id": 7, "name": "Sci-Fi"}], "metadata": {}},
+    {"id": 2, "title": "Hyperion", "shelves": [], "metadata": {}},
+    {"id": 3, "title": "Saga #1", "primaryFile": {"bookType": "CBX"}, "metadata": {}},
+]
+_PLAN = [
+    {"shelf": "sci-fi", "book_ids": [1, 2, 2]},  # existing shelf, matched case-insensitively
+    {"shelf": "Comics", "book_ids": [3, 999], "icon": "pi pi-book"},  # new shelf, one bad id
+]
+
+
+def _mock_library(authed):
+    authed.get(f"{BASE}/api/v1/shelves").mock(
+        return_value=httpx.Response(200, json=[{"id": 7, "name": "Sci-Fi"}])
+    )
+    authed.get(f"{BASE}/api/v1/books").mock(return_value=httpx.Response(200, json=_SHELF_BOOKS))
+
+
+async def test_organize_shelves_dry_run_previews_without_writing(authed):
+    _mock_library(authed)
+    create = authed.post(f"{BASE}/api/v1/shelves").mock(return_value=httpx.Response(200, json={}))
+    assign = authed.post(f"{BASE}/api/v1/books/shelves").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+
+    async with Client(mcp) as mcp_client:
+        result = await mcp_client.call_tool("organize_shelves", {"plan": _PLAN})
+
+    d = result.data
+    assert d["dry_run"] is True
+    scifi, comics = d["shelves"]
+    assert (scifi["action"], scifi["shelf_id"], scifi["shelf"]) == ("existing", 7, "Sci-Fi")
+    assert scifi["to_add"] == [2] and scifi["already_on_shelf"] == [1]  # dup id collapsed
+    assert comics["action"] == "create" and comics["unknown_ids"] == [999]
+    assert comics["counts"] == {"books": 0, "comics": 1, "audiobooks": 0}
+    assert d["totals"] == {
+        "shelves_to_create": 1,
+        "shelves_reused": 1,
+        "books_to_add": 2,
+        "unknown_ids": 1,
+    }
+    assert not create.called and not assign.called  # preview writes nothing
+
+
+async def test_organize_shelves_apply_creates_and_assigns_additively(authed):
+    _mock_library(authed)
+    create = authed.post(f"{BASE}/api/v1/shelves").mock(
+        return_value=httpx.Response(200, json={"id": 12, "name": "Comics"})
+    )
+    assign = authed.post(f"{BASE}/api/v1/books/shelves").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+
+    async with Client(mcp) as mcp_client:
+        result = await mcp_client.call_tool("organize_shelves", {"plan": _PLAN, "dry_run": False})
+
+    d = result.data
+    assert d["created"] == [{"shelf": "Comics", "shelf_id": 12}]
+    assert [a["shelf_id"] for a in d["assigned"]] == [7, 12] and d["failed"] == []
+    assert json.loads(create.calls.last.request.content) == {
+        "name": "Comics",
+        "publicShelf": False,
+        "icon": "pi pi-book",
+    }
+    bodies = [json.loads(call.request.content) for call in assign.calls]
+    assert bodies == [
+        {"bookIds": [2], "shelvesToAssign": [7], "shelvesToUnassign": []},
+        {"bookIds": [3], "shelvesToAssign": [12], "shelvesToUnassign": []},
+    ]  # additive only — never unassigns
+
+
+async def test_organize_shelves_reports_partial_failure(authed):
+    _mock_library(authed)
+    authed.post(f"{BASE}/api/v1/shelves").mock(return_value=httpx.Response(500, text="boom"))
+    authed.post(f"{BASE}/api/v1/books/shelves").mock(return_value=httpx.Response(200, json=[]))
+
+    async with Client(mcp) as mcp_client:
+        result = await mcp_client.call_tool("organize_shelves", {"plan": _PLAN, "dry_run": False})
+
+    d = result.data
+    assert [a["shelf"] for a in d["assigned"]] == ["Sci-Fi"]  # the existing shelf still lands
+    assert d["failed"][0]["shelf"] == "Comics" and "500" in d["failed"][0]["error"]
+
+
+async def test_organize_shelves_rejects_duplicate_shelf_names(authed):
+    plan = [{"shelf": "Fantasy", "book_ids": [1]}, {"shelf": "fantasy", "book_ids": [2]}]
+    async with Client(mcp) as mcp_client:
+        result = await mcp_client.call_tool(
+            "organize_shelves", {"plan": plan}, raise_on_error=False
+        )
+    assert result.is_error
+    assert "more than once" in result.content[0].text
+
+
 async def test_list_libraries_trims_fields(authed):
     libs = [
         {

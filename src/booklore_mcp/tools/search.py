@@ -1,7 +1,9 @@
-"""Search & discovery tools: full-library search, author indexes, duplicate finding."""
+"""Search & discovery tools: full-library search, title and genre search, author
+indexes, duplicate finding."""
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Literal
 
 from .. import runtime
@@ -9,9 +11,12 @@ from ..app import mcp
 from ..client import BookLoreError
 from ..helpers import (
     _MISSING_FULL_ONLY,
+    BookKind,
     _all_books,
     _author_names,
+    _categories,
     _matches_filters,
+    _matches_kind,
     _matches_query,
     _meta,
     _summarize_book,
@@ -56,6 +61,7 @@ async def search_books(
       - tags: [str], tags_mode: "any"|"all" (default "any")
       - categories: [str] (any), authors: [str] (any, substring)
       - shelf_ids: [int], library_ids: [int]
+      - kind: "book"|"comic"|"audiobook" — by primary file type (comics are CBX)
       - read_status: "UNSET"|"READING"|"READ"|"UNREAD"|… (sparse upstream)
       - missing: subset of ["tags","categories","authors","description","isbn",
         "isbn10","isbn13","series","cover","asin","goodreadsId","googleId",
@@ -68,9 +74,10 @@ async def search_books(
     """
     filters = filters or {}
     missing = filters.get("missing") or []
-    # Identifier fields (asin/goodreadsId/…) and description are stripped from the plain
-    # list response — fetch full metadata when the query depends on one of them.
-    need_desc = any(f in _MISSING_FULL_ONLY for f in missing)
+    # Identifier fields (asin/goodreadsId/…), description and subtitle are stripped from
+    # the plain list response — fetch full metadata when the query depends on one of them
+    # (a text `query` matches subtitles, so it always needs the full records).
+    need_desc = bool(query) or any(f in _MISSING_FULL_ONLY for f in missing)
     books = await _all_books(with_description=need_desc)
 
     if query:
@@ -124,6 +131,96 @@ async def books_by_author(author: str, limit: int = 50, offset: int = 0) -> Sear
     page = matched[offset : offset + limit]
     return SearchResult(
         total=total, limit=limit, offset=offset, books=[_summarize_book(b) for b in page]
+    )
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "title": "Search titles"})
+async def search_titles(
+    query: str,
+    in_subtitle: bool = True,
+    kind: BookKind = "all",
+    limit: int = 50,
+    offset: int = 0,
+) -> SearchResult:
+    """Find books whose title (and, by default, subtitle) contains `query`.
+
+    Case-insensitive substring match on the title text only — unlike search_books it
+    ignores authors and ISBNs, so "war" finds "The Art of War" but not a book by an author
+    named Warren. Set in_subtitle=False to match titles alone. `kind` narrows to
+    "book", "comic" (CBX) or "audiobook". Sorted by title; `limit` is capped at 200.
+    Returns {total, limit, offset, books:[summaries]}.
+    """
+    ql = query.strip().lower()
+    if not ql:
+        raise BookLoreError("Provide a non-empty `query`.")
+
+    def hit(b: dict) -> bool:
+        parts = [b.get("title") or _meta(b).get("title")]
+        if in_subtitle:
+            parts.append(_meta(b).get("subtitle"))
+        return any(ql in str(p).lower() for p in parts if p)
+
+    # Subtitles are stripped from the plain list response, so fetch full records.
+    books = [
+        b for b in await _all_books(with_description=True) if _matches_kind(b, kind) and hit(b)
+    ]
+    books.sort(key=_SORT_KEYS["title"])
+    return _page(books, limit, offset)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "title": "List genres"})
+async def list_genres(query: str = "", limit: int = 100, offset: int = 0) -> dict:
+    """List the library's genres (BookLore categories) with per-genre book counts.
+
+    Genres are collected from every book's categories, merged case-insensitively (the
+    first spelling seen is kept). Optionally filter by a case-insensitive substring
+    `query`. Use books_by_genre to list the books in one. Returns {total, genres:[{name,
+    book_count}]}.
+    """
+    names: dict[str, str] = {}
+    counts: Counter[str] = Counter()
+    for b in await _all_books():
+        # De-duplicate per book first so a book tagged "SciFi" and "scifi" counts once.
+        for key, name in {c.lower(): c for c in _categories(b)}.items():
+            names.setdefault(key, name)
+            counts[key] += 1
+    keys = sorted(names, key=lambda k: names[k].lower())
+    if query:
+        ql = query.lower()
+        keys = [k for k in keys if ql in k]
+    page = keys[max(0, offset) : max(0, offset) + max(1, limit)]
+    return {
+        "total": len(keys),
+        "genres": [{"name": names[k], "book_count": counts[k]} for k in page],
+    }
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "title": "Books by genre"})
+async def books_by_genre(
+    genre: str, kind: BookKind = "all", limit: int = 50, offset: int = 0
+) -> SearchResult:
+    """List books in a genre (case-insensitive exact match on a BookLore category). Get
+    genre names from list_genres. `kind` narrows to "book", "comic" or "audiobook".
+    Sorted by title. Returns {total, limit, offset, books:[summaries]}."""
+    gl = genre.lower()
+    matched = [
+        b
+        for b in await _all_books()
+        if _matches_kind(b, kind) and any(gl == c.lower() for c in _categories(b))
+    ]
+    matched.sort(key=_SORT_KEYS["title"])
+    return _page(matched, limit, offset)
+
+
+def _page(books: list[dict], limit: int, offset: int) -> SearchResult:
+    """Paginate sorted raw records into a SearchResult (limit capped at 200)."""
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    return SearchResult(
+        total=len(books),
+        limit=limit,
+        offset=offset,
+        books=[_summarize_book(b) for b in books[offset : offset + limit]],
     )
 
 
