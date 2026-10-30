@@ -83,7 +83,8 @@ async def bulk_set_read_status(items: list[dict], ctx: Context | None = None) ->
     book has its own status. `items` is [{"book_id": int, "status": ReadStatus}], with
     status one of UNREAD/READING/RE_READING/READ/PARTIALLY_READ/PAUSED/WONT_READ/
     ABANDONED/UNSET. Books are grouped by status and sent in ONE call per distinct
-    status (not one per book). Returns {updated, by_status:{status:count}, failed}.
+    status (not one per book). Resolve title/author rows to book ids with match_books
+    first. Returns {updated, by_status:{status:count}, failed}.
     """
     valid = set(get_args(ReadStatus))
     groups: dict[str, list[int]] = {}

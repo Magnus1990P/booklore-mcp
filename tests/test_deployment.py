@@ -38,6 +38,7 @@ EXPECTED_TOOLS = {
     "isbn_lookup",
     "list_authors",
     "list_books",
+    "match_books",
     "list_genres",
     "list_libraries",
     "list_shelves",

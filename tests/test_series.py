@@ -103,3 +103,17 @@ async def test_complete_series_hidden_unless_requested_and_series_filter(authed)
     assert [s["series"] for s in default["series"]] == ["Other"]  # complete Trilogy omitted
     assert len(only["series"]) == 1
     assert only["series"][0]["complete"] is True and only["series"][0]["missing"] == []
+
+
+async def test_unknown_series_name_returns_suggestions(authed):
+    books = [_book(1, "The Expanse", 1), _book(2, "The Expanse", 2), _book(3, "Discworld", 1)]
+    data, _ = await _gaps(authed, books, series="Expanse", include_complete=True)
+
+    assert data["series_count"] == 0
+    assert data["suggestions"][0]["name"] == "The Expanse"
+    assert data["suggestions"][0]["book_count"] == 2
+
+
+async def test_known_series_name_has_no_suggestions(authed):
+    data, _ = await _gaps(authed, [_book(1, "Discworld", 1)], series="discworld")
+    assert "suggestions" not in data

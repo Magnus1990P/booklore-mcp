@@ -5,7 +5,16 @@ from __future__ import annotations
 import math
 
 from ..app import mcp
-from ..helpers import BookKind, _all_books, _book_kind, _matches_kind, _meta, _series_number
+from ..helpers import (
+    BookKind,
+    _all_books,
+    _book_kind,
+    _matches_kind,
+    _meta,
+    _name_counts,
+    _series_number,
+    _suggest_names,
+)
 
 
 def _fmt(number: float) -> int | float:
@@ -29,18 +38,23 @@ async def find_series_gaps(
     numbers like 1.5 count as owned extras, never as gaps. `unnumbered` lists books in the
     series with no position at all (fix their seriesNumber to include them).
 
-    `series` narrows to one series; `kind` to "book", "comic" (CBX) or "audiobook".
+    `series` narrows to one series (case-insensitive exact name); `kind` to "book",
+    "comic" (CBX) or "audiobook". If no series has that name, `suggestions` lists the
+    closest series names with their book counts — retry with one of those.
     Complete series are omitted unless include_complete=True.
     Returns {series_count, incomplete_count, series:[{series, kind, series_total,
-    total_known, owned, missing, unnumbered, complete, books:[{id, title, number}]}]}.
+    total_known, owned, missing, unnumbered, complete, books:[{id, title, number}]}]},
+    plus `suggestions` when a named series was not found.
     """
     # seriesTotal is stripped from the plain list response, so fetch full records.
     groups: dict[str, list[dict]] = {}
     names: dict[str, str] = {}
+    all_names: list[str] = []  # every series name of the right kind, for suggestions
     for b in await _all_books(with_description=True):
         name = (_meta(b).get("seriesName") or "").strip()
         if not name or not _matches_kind(b, kind):
             continue
+        all_names.append(name)
         key = name.lower()
         if series is not None and key != series.strip().lower():
             continue
@@ -84,8 +98,12 @@ async def find_series_gaps(
                 ],
             }
         )
-    return {
+    result: dict = {
         "series_count": len(report),
         "incomplete_count": sum(1 for s in report if not s["complete"]),
         "series": report,
     }
+    if series is not None and not groups:
+        counts = _name_counts([n] for n in all_names)
+        result["suggestions"] = [s.model_dump() for s in _suggest_names(series, counts)]
+    return result

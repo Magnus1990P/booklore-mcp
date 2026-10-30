@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .. import runtime
 from ..app import mcp
-from ..helpers import _summarize_book
+from ..helpers import _all_books, _matches_query, _summarize_book
 from ..models import BookSummary
 
 
@@ -12,24 +12,21 @@ from ..models import BookSummary
     annotations={"readOnlyHint": True, "idempotentHint": True, "title": "List / search books"}
 )
 async def list_books(query: str = "", limit: int = 25) -> list[BookSummary]:
-    """List books in the library, optionally filtered by a keyword.
+    """Quick lookup: list books, optionally filtered by a keyword — the fastest way to
+    find a book id.
 
-    `query` is matched (case-insensitive substring) against title and author
-    names client-side; leave empty to list everything. Returns trimmed summaries
-    (id, title, authors, series, readStatus, personalRating, shelves) capped at
-    `limit`. Call get_book for full details on one book.
+    `query` is a case-insensitive substring over title/series/isbn/author names (the
+    same matching as search_books' `query`); leave empty to list everything. Returns
+    trimmed summaries (id, title, authors, series, readStatus, personalRating, shelves,
+    kind) capped at `limit`, in library order. For filters, sorting or paging use
+    search_books; for misspelled titles or subtitles use search_titles; call get_book
+    for one book's full metadata.
     """
-    books = await runtime.client.get("/api/v1/books", params={"withDescription": "false"}) or []
-    summaries = [_summarize_book(b) for b in books]
+    books = await _all_books()
     if query:
         q = query.lower()
-
-        def matches(s: BookSummary) -> bool:
-            hay = " ".join(str(x) for x in [s.title, *(s.authors or [])] if x).lower()
-            return q in hay
-
-        summaries = [s for s in summaries if matches(s)]
-    return summaries[:limit]
+        books = [b for b in books if _matches_query(b, q)]
+    return [_summarize_book(b) for b in books[: max(1, limit)]]
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "title": "Get book details"})

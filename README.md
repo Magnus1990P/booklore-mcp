@@ -12,18 +12,19 @@ your BookLore login (JWT, auto-refreshed).
 
 | Tool | Kind | What it does |
 |---|---|---|
-| `search_books` | read | Search/filter the library (tags, categories, authors, shelves, **missing fields**), sorted + paginated |
-| `list_books` | read | List/search books (trimmed summaries) |
+| `search_books` | read | Search/filter the library (text query over title/series/ISBN/authors — use `search_titles` for subtitles; tags, categories, authors, shelves, **missing fields**), sorted + paginated |
+| `list_books` | read | Fast keyword lookup (title/series/ISBN/authors) returning trimmed summaries — the quickest way to find a book id |
 | `get_book` | read | Full record + metadata for one book |
 | `list_shelves` | read | All shelves |
 | `get_shelf_books` | read | Books on a shelf |
 | `get_recommendations` | read | Books similar to a given one |
 | `list_authors` | read | Distinct authors with per-author book counts |
-| `books_by_author` | read | Books by a given author |
-| `search_titles` | read | Search title (and subtitle) text only — ignores authors/ISBNs; filter books vs comics |
+| `books_by_author` | read | Books by a given author; suggests the closest author names on a miss |
+| `search_titles` | read | Approximate (typo-tolerant) search over title, subtitle, series name and tags — ignores authors/ISBNs; whole library by default, optional kind/library/shelf/category scope; each hit reports `matched_on` + `score` |
+| `match_books` | read | Resolve a list of `{title, author}` rows (e.g. a Goodreads CSV) to book ids — matched / ambiguous / unmatched per row, with candidates |
 | `list_genres` | read | Distinct genres (BookLore categories) with per-genre book counts |
-| `books_by_genre` | read | Books in a given genre; filter books vs comics |
-| `find_series_gaps` | read | Missing volumes/issues in book and comic series (owned, missing, unnumbered) |
+| `books_by_genre` | read | Books in a given genre; filter books vs comics; suggests the closest genres on a miss |
+| `find_series_gaps` | read | Missing volumes/issues in book and comic series (owned, missing, unnumbered); suggests the closest series names on a miss |
 | `get_reading_stats` | read | Counts by read status + average rating |
 | `export_library` | read | Export the library (or a shelf) as JSON or CSV; `fields` projection or `full=True` for ISBN/ASIN/ratings/IDs |
 | `find_duplicates` | read | Group duplicate books via BookLore's native detection (presets + per-signal control) |
@@ -73,7 +74,8 @@ the field you want to fill.
 "Kind" is derived from a book's primary file: CBX archives (cbz/cbr/cb7) are **comics**,
 audiobook files are **audiobooks**, everything else is a **book**. `search_titles`,
 `books_by_genre`, `find_series_gaps` and the `search_books` `kind` filter all accept it,
-and `export_library` can project it as a `kind` field. `find_series_gaps` positions each
+and `export_library` can project it as a `kind` field; book summaries also carry it as
+`kind` (null when the record has no file info). `find_series_gaps` positions each
 book by `seriesNumber` (falling back to a numeric comic `issueNumber`); when BookLore
 knows the series total it also reports missing trailing volumes, otherwise only gaps
 inside the run you own.
@@ -115,7 +117,7 @@ The server reads three environment variables (see `.env.example`):
   exponential backoff (default `2`); `BOOKLORE_BACKOFF` sets the base delay in
   seconds (default `0.5`).
 - `BOOKLORE_CACHE_TTL` — seconds to cache the full book list, shared by the
-  search/stats/export tools (default `10`; `0` disables). Any write to a book
+  search/stats/export tools (default `60`; `0` disables). Any write to a book
   invalidates it immediately.
 - `BOOKLORE_BULK_CONCURRENCY` — max concurrent per-book operations in
   `bulk_update_metadata` (default `1`, i.e. sequential). BookLore stores tags and

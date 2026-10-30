@@ -207,11 +207,15 @@ class BookLoreClient:
 
     async def get_books(self, with_description: bool = False) -> list[dict]:
         """Fetch the full book list, served from a short-TTL cache when enabled.
-        The cache is invalidated automatically on any write to /api/v1/books."""
+        The cache is invalidated automatically on any write to /api/v1/books.
+
+        The full (withDescription) list is a superset of the light one, so a fresh full
+        list also answers a light request instead of triggering a second download."""
         if self._cache_ttl > 0:
-            hit = self._books_cache.get(with_description)
-            if hit and time.monotonic() - hit[0] < self._cache_ttl:
-                return hit[1]
+            for key in (with_description, True):
+                hit = self._books_cache.get(key)
+                if hit and time.monotonic() - hit[0] < self._cache_ttl:
+                    return hit[1]
         books = (
             await self.get(
                 "/api/v1/books", params={"withDescription": str(with_description).lower()}

@@ -23,7 +23,7 @@ RETRIES = int(os.environ.get("BOOKLORE_RETRIES", "2"))
 BACKOFF = float(os.environ.get("BOOKLORE_BACKOFF", "0.5"))
 # Seconds to cache the full book list (shared by the search/stats/export tools);
 # 0 disables caching. Any write to /api/v1/books invalidates it immediately.
-CACHE_TTL = float(os.environ.get("BOOKLORE_CACHE_TTL", "10"))
+CACHE_TTL = float(os.environ.get("BOOKLORE_CACHE_TTL", "60"))
 # Max concurrent per-book operations in bulk_update_metadata. Defaults to 1
 # (sequential): BookLore stores tags/categories as shared rows with a UNIQUE name,
 # so concurrently adding the SAME new tag to several books trips a data-conflict

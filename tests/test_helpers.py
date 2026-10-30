@@ -18,6 +18,7 @@ def test_summarize_trims_and_normalizes_authors():
             "title": "ignored when top-level title present",
         },
         "shelves": [{"name": "Fantasy"}, {"name": "Favorites"}],
+        "primaryFile": {"bookType": "EPUB"},
         "extraField": "should be dropped",
     }
 
@@ -31,6 +32,7 @@ def test_summarize_trims_and_normalizes_authors():
         "readStatus": "READ",
         "personalRating": 8,
         "shelves": ["Fantasy", "Favorites"],
+        "kind": "book",
     }
 
 
@@ -39,3 +41,4 @@ def test_summarize_falls_back_to_metadata_title():
     assert summary.title == "From metadata"
     assert summary.authors is None
     assert summary.shelves == []
+    assert summary.kind is None  # no file info -> unknown, not guessed as "book"
