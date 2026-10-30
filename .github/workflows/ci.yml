@@ -31,6 +31,11 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Check uv.lock matches pyproject.toml
+        # `--frozen` below trusts the lockfile as-is; this catches a pyproject.toml edit
+        # (e.g. from a Dependabot PR) that left uv.lock out of date.
+        run: uv lock --check
+
       - name: Sync dependencies
         run: uv sync --frozen
 
