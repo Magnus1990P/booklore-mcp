@@ -180,6 +180,24 @@ The image runs the HTTP transport bound to `0.0.0.0` inside the container; you
 control exposure with the published port. Credentials are passed in at runtime, so
 they're never baked into the image.
 
+Each release tag `vX.Y.Z` publishes a pre-built multi-arch image (`linux/amd64` and
+`linux/arm64`) to GitHub Container Registry, tagged `X.Y.Z`, `X.Y`, `sha-<short>` and,
+for stable releases, `latest`. A pre-release such as `v1.3.0-rc1` gets only its exact
+version and never moves `latest`. Pushes to `main` build and test the image without
+publishing it.
+
+```bash
+docker pull ghcr.io/magnus1990p/booklore-mcp:latest
+docker run --rm --env-file .env -p 127.0.0.1:8000:8000 ghcr.io/magnus1990p/booklore-mcp:latest
+```
+
+To cut a release, bump `version` in `pyproject.toml`, commit, and push a matching tag
+(`git tag v0.2.0 && git push origin v0.2.0`). CI refuses to publish when the tag and
+`pyproject.toml` disagree.
+
+Forks publish under their own owner (`ghcr.io/<owner>/booklore-mcp`). To build locally
+instead:
+
 ```bash
 docker build -t booklore-mcp .
 docker run --rm --env-file .env -p 127.0.0.1:8000:8000 booklore-mcp
@@ -336,7 +354,10 @@ uv run mypy                 # type check (src/booklore_mcp + the server.py shim)
 
 CI (`.github/workflows/ci.yml`) runs lint, format check, type check, and tests
 across Python 3.12–3.14 on every push and pull request, plus a dependency
-vulnerability scan (`pip-audit`) and a Docker image build.
+vulnerability scan (`pip-audit`). Once those pass, it builds the Docker image and
+smoke-tests it: the image runs as a non-root user, every tool registers, and the HTTP
+server answers an MCP `initialize`. Only a pushed `v*` release tag publishes the image
+to GitHub Container Registry; `main` pushes and pull requests never publish.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow, how to add a tool, and
 testing conventions.

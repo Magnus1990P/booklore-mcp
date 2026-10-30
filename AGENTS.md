@@ -87,6 +87,9 @@ python -m booklore_mcp              # equivalent module entrypoint
   that carry them.
 - **Supply chain & runtime.** Keep `uv.lock` pinned; the CI `pip-audit` job scans
   dependencies. The container runs as the non-root `app` user — keep it that way.
+- **Security audits.** `.claude/agents/security-auditor.md` is a read-only Claude Code
+  subagent that runs the local scanners and audits the areas above, then reports ranked
+  findings. Ask Claude Code to "use the security-auditor agent" on the repo or on a change.
 
 ## Documentation & information best practices
 
